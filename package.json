@@ -1,7 +1,7 @@
 {
   "name": "ai-web-factory",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "workspaces": [
     "frontend",
     "backend"
@@ -9,7 +9,9 @@
   "scripts": {
     "dev": "concurrently -k -n API,WEB \"npm run dev -w backend\" \"npm run dev -w frontend\"",
     "build": "npm run build -w backend && npm run build -w frontend",
-    "typecheck": "npm run typecheck -w backend && npm run typecheck -w frontend"
+    "typecheck": "npm run typecheck -w backend && npm run typecheck -w frontend",
+    "test": "npm run test -w backend",
+    "verify": "npm run typecheck && npm test && npm run build"
   },
   "devDependencies": {
     "concurrently": "latest"
