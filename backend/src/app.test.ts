@@ -139,6 +139,74 @@ test("案件作成・編集・承認付きステータス変更・バックア�
     assert.equal(started.response.status, 200);
     assert.equal(started.body.project.status, "制作中");
 
+    for (const status of ["AI品質チェック", "ユーザー確認", "最終確認"]) {
+      const moved = await jsonRequest(
+        ctx.baseUrl,
+        `/api/projects/${projectId}/status`,
+        { method: "POST", body: JSON.stringify({ status }) }
+      );
+      assert.equal(moved.response.status, 200);
+    }
+
+    const blockedDelivery = await jsonRequest(
+      ctx.baseUrl,
+      `/api/projects/${projectId}/status`,
+      { method: "POST", body: JSON.stringify({ status: "納品" }) }
+    );
+    assert.equal(blockedDelivery.response.status, 409);
+    assert.equal(blockedDelivery.body.approvalType, "final_delivery");
+
+    const rejectedDelivery = await jsonRequest(
+      ctx.baseUrl,
+      `/api/projects/${projectId}/approvals`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          approvalType: "final_delivery",
+          decision: "rejected",
+          note: "最終確認で差し戻し"
+        })
+      }
+    );
+    assert.equal(rejectedDelivery.response.status, 201);
+
+    const stillBlocked = await jsonRequest(
+      ctx.baseUrl,
+      `/api/projects/${projectId}/status`,
+      { method: "POST", body: JSON.stringify({ status: "納品" }) }
+    );
+    assert.equal(stillBlocked.response.status, 409);
+
+    const approvedDelivery = await jsonRequest(
+      ctx.baseUrl,
+      `/api/projects/${projectId}/approvals`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          approvalType: "final_delivery",
+          decision: "approved",
+          note: "最終確認OK"
+        })
+      }
+    );
+    assert.equal(approvedDelivery.response.status, 201);
+    assert.equal(approvedDelivery.body.project.final_confirmation, 1);
+
+    const delivered = await jsonRequest(
+      ctx.baseUrl,
+      `/api/projects/${projectId}/status`,
+      { method: "POST", body: JSON.stringify({ status: "納品" }) }
+    );
+    assert.equal(delivered.response.status, 200);
+    assert.ok(delivered.body.project.delivered_at);
+
+    const completed = await jsonRequest(
+      ctx.baseUrl,
+      `/api/projects/${projectId}/status`,
+      { method: "POST", body: JSON.stringify({ status: "完了" }) }
+    );
+    assert.equal(completed.response.status, 200);
+
     const backup = await jsonRequest(ctx.baseUrl, "/api/backups", {
       method: "POST",
       body: "{}"
