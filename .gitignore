@@ -6,9 +6,10 @@ dist/
 .env.*
 !.env.example
 
-# Local-only database
+# Local-only database and backups
 data/*.db
 data/*.db-*
 data/*.sqlite
 data/*.sqlite-*
+data/backups/
 !data/.gitkeep
