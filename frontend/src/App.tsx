@@ -33,20 +33,105 @@ type Project = ProjectSummary & {
   delivered_at: string | null;
 };
 
+type Approval = {
+  id: string;
+  approval_type: string;
+  decision: "approved" | "rejected";
+  note: string;
+  created_at: string;
+};
+
+type HistoryItem = {
+  id: string;
+  event_type: string;
+  description: string;
+  created_at: string;
+};
+
+type NextAction = {
+  status: string;
+  approvalType: string | null;
+  approvalLabel: string | null;
+  approvalSatisfied: boolean;
+};
+
 type DetailResponse = {
   project: Project;
   latestAnalysis: unknown | null;
   latestSpec: unknown | null;
-  approvals: Array<{ id: string; approval_type: string; decision: string; note: string; created_at: string }>;
-  history: Array<{ id: string; event_type: string; description: string; created_at: string }>;
+  approvals: Approval[];
+  history: HistoryItem[];
+  nextActions: NextAction[];
+};
+
+type MetaResponse = {
+  statuses: string[];
+  sources: Array<[string, string]>;
+  priorities: string[];
+  approvalTypes: Record<string, string>;
+};
+
+type Notice = {
+  kind: "success" | "error";
+  text: string;
 };
 
 type View =
   | { screen: "dashboard" }
   | { screen: "new" }
-  | { screen: "detail"; id: string };
+  | { screen: "detail"; id: string }
+  | { screen: "edit"; project: Project };
 
-const emptyForm = {
+type ProjectFormState = {
+  projectName: string;
+  clientName: string;
+  contactName: string;
+  contact: string;
+  source: string;
+  requestDetails: string;
+  siteType: string;
+  purpose: string;
+  target: string;
+  requiredPages: string;
+  designPreferences: string;
+  referenceSites: string;
+  requiredFeatures: string;
+  assets: string;
+  desiredDeadline: string;
+  budget: string;
+  priority: string;
+};
+
+const defaultMeta: MetaResponse = {
+  statuses: [
+    "新規",
+    "AI分析中",
+    "情報不足",
+    "確認待ち",
+    "制作待ち",
+    "制作中",
+    "AI品質チェック",
+    "ユーザー確認",
+    "修正中",
+    "再チェック",
+    "最終確認",
+    "納品",
+    "完了"
+  ],
+  sources: [
+    ["manual", "手動登録"],
+    ["website", "自社サイト"],
+    ["gmail", "Gmail"],
+    ["line", "LINE"],
+    ["sns", "SNS"],
+    ["lancers", "Lancers"],
+    ["coconala", "ココナラ"]
+  ],
+  priorities: ["低", "通常", "高", "最優先"],
+  approvalTypes: {}
+};
+
+const emptyForm: ProjectFormState = {
   projectName: "",
   clientName: "",
   contactName: "",
@@ -66,7 +151,29 @@ const emptyForm = {
   priority: "通常"
 };
 
-function formatDate(value: string) {
+function projectToForm(project: Project): ProjectFormState {
+  return {
+    projectName: project.project_name,
+    clientName: project.client_name,
+    contactName: project.contact_name,
+    contact: project.contact,
+    source: project.source,
+    requestDetails: project.request_details,
+    siteType: project.site_type,
+    purpose: project.purpose,
+    target: project.target,
+    requiredPages: project.required_pages,
+    designPreferences: project.design_preferences,
+    referenceSites: project.reference_sites,
+    requiredFeatures: project.required_features,
+    assets: project.assets,
+    desiredDeadline: project.desired_deadline,
+    budget: project.budget,
+    priority: project.priority
+  };
+}
+
+function formatDate(value: string | null | undefined) {
   if (!value) return "未設定";
   return new Intl.DateTimeFormat("ja-JP", {
     year: "numeric",
@@ -77,34 +184,55 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-function sourceLabel(source: string) {
-  const labels: Record<string, string> = {
-    manual: "手動登録",
-    website: "自社サイト",
-    gmail: "Gmail",
-    line: "LINE",
-    sns: "SNS",
-    lancers: "Lancers",
-    coconala: "ココナラ"
-  };
-  return labels[source] ?? source;
+function sourceLabel(source: string, meta: MetaResponse) {
+  return meta.sources.find(([value]) => value === source)?.[1] ?? source;
+}
+
+async function readJson(response: Response) {
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || "処理に失敗しました。");
+  }
+  return data;
 }
 
 function App() {
   const [view, setView] = useState<View>({ screen: "dashboard" });
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [detail, setDetail] = useState<DetailResponse | null>(null);
+  const [meta, setMeta] = useState<MetaResponse>(defaultMeta);
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("");
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const [backupBusy, setBackupBusy] = useState(false);
 
   const loadProjects = useCallback(async () => {
     setLoading(true);
     try {
       const response = await fetch("/api/projects");
-      if (!response.ok) throw new Error("案件一覧を取得できませんでした。");
-      setProjects(await response.json());
+      setProjects(await readJson(response));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "通信エラーが発生しました。");
+      setNotice({
+        kind: "error",
+        text: error instanceof Error ? error.message : "案件一覧を取得できませんでした。"
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const loadDetail = useCallback(async (id: string) => {
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/projects/${id}`);
+      const data = (await readJson(response)) as DetailResponse;
+      setDetail(data);
+      return data;
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        text: error instanceof Error ? error.message : "案件詳細を取得できませんでした。"
+      });
+      return null;
     } finally {
       setLoading(false);
     }
@@ -112,48 +240,48 @@ function App() {
 
   useEffect(() => {
     void loadProjects();
+    void (async () => {
+      try {
+        const response = await fetch("/api/meta");
+        setMeta(await readJson(response));
+      } catch {
+        // 初期値で動作可能。API起動直後などは次回表示時に再取得される。
+      }
+    })();
   }, [loadProjects]);
 
   useEffect(() => {
-    if (view.screen !== "detail") {
-      setDetail(null);
-      return;
+    if (view.screen === "detail") {
+      void loadDetail(view.id);
     }
-
-    let active = true;
-    void (async () => {
-      setLoading(true);
-      try {
-        const response = await fetch(`/api/projects/${view.id}`);
-        if (!response.ok) throw new Error("案件詳細を取得できませんでした。");
-        const data = (await response.json()) as DetailResponse;
-        if (active) setDetail(data);
-      } catch (error) {
-        if (active) setMessage(error instanceof Error ? error.message : "通信エラーが発生しました。");
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-
-    return () => {
-      active = false;
-    };
-  }, [view]);
-
-  const stats = useMemo(
-    () => ({
-      total: projects.length,
-      newCount: projects.filter((project) => project.status === "新規").length,
-      waiting: projects.filter((project) => project.status.includes("確認")).length,
-      active: projects.filter((project) => ["制作待ち", "制作中", "修正中", "再チェック"].includes(project.status)).length
-    }),
-    [projects]
-  );
+  }, [view, loadDetail]);
 
   const goDashboard = () => {
-    setMessage("");
+    setDetail(null);
+    setNotice(null);
     setView({ screen: "dashboard" });
     void loadProjects();
+  };
+
+  const backupNow = async () => {
+    setBackupBusy(true);
+    setNotice(null);
+    try {
+      const response = await fetch("/api/backups", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}"
+      });
+      const data = await readJson(response);
+      setNotice({ kind: "success", text: `バックアップを作成しました: ${data.filename}` });
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        text: error instanceof Error ? error.message : "バックアップに失敗しました。"
+      });
+    } finally {
+      setBackupBusy(false);
+    }
   };
 
   return (
@@ -168,17 +296,28 @@ function App() {
         </div>
 
         <nav aria-label="メインメニュー">
-          <button className={view.screen === "dashboard" ? "nav-item active" : "nav-item"} onClick={goDashboard}>
+          <button
+            className={view.screen === "dashboard" ? "nav-item active" : "nav-item"}
+            onClick={goDashboard}
+          >
             ダッシュボード
           </button>
-          <button className={view.screen === "new" ? "nav-item active" : "nav-item"} onClick={() => setView({ screen: "new" })}>
+          <button
+            className={view.screen === "new" ? "nav-item active" : "nav-item"}
+            onClick={() => setView({ screen: "new" })}
+          >
             ＋ 新規案件
           </button>
         </nav>
 
-        <div className="local-badge">
-          <span className="dot" />
-          PC内だけで稼働
+        <div className="sidebar-footer">
+          <button className="backup-link" onClick={backupNow} disabled={backupBusy}>
+            {backupBusy ? "保存中..." : "DBバックアップ"}
+          </button>
+          <div className="local-badge">
+            <span className="dot" />
+            PC内だけで稼働
+          </div>
         </div>
       </aside>
 
@@ -186,39 +325,82 @@ function App() {
         <header className="topbar">
           <div>
             <p className="eyebrow">AI WEB FACTORY</p>
-            <h1>{view.screen === "dashboard" ? "案件ダッシュボード" : view.screen === "new" ? "新規案件登録" : "案件詳細"}</h1>
+            <h1>
+              {view.screen === "dashboard"
+                ? "案件ダッシュボード"
+                : view.screen === "new"
+                  ? "新規案件登録"
+                  : view.screen === "edit"
+                    ? "案件編集"
+                    : "案件詳細"}
+            </h1>
           </div>
-          {view.screen !== "new" && (
-            <button className="primary-button" onClick={() => setView({ screen: "new" })}>
-              ＋ 案件を登録
+          <div className="topbar-actions">
+            <button className="secondary-button desktop-only" onClick={backupNow} disabled={backupBusy}>
+              {backupBusy ? "保存中..." : "バックアップ"}
             </button>
-          )}
+            {view.screen !== "new" && (
+              <button className="primary-button" onClick={() => setView({ screen: "new" })}>
+                ＋ 案件を登録
+              </button>
+            )}
+          </div>
         </header>
 
-        {message && <div className="notice error">{message}</div>}
+        {notice && <div className={`notice ${notice.kind}`}>{notice.text}</div>}
 
         {view.screen === "dashboard" && (
           <Dashboard
             projects={projects}
             loading={loading}
-            stats={stats}
+            meta={meta}
             onSelect={(id) => setView({ screen: "detail", id })}
             onCreate={() => setView({ screen: "new" })}
           />
         )}
 
         {view.screen === "new" && (
-          <NewProject
+          <ProjectEditor
+            mode="create"
+            initial={emptyForm}
+            meta={meta}
             onCancel={goDashboard}
-            onCreated={(id) => {
+            onSaved={(id) => {
               void loadProjects();
+              setNotice({ kind: "success", text: "案件を登録しました。" });
+              setView({ screen: "detail", id });
+            }}
+          />
+        )}
+
+        {view.screen === "edit" && (
+          <ProjectEditor
+            mode="edit"
+            projectId={view.project.id}
+            initial={projectToForm(view.project)}
+            meta={meta}
+            onCancel={() => setView({ screen: "detail", id: view.project.id })}
+            onSaved={(id) => {
+              void loadProjects();
+              setNotice({ kind: "success", text: "案件情報を更新しました。" });
               setView({ screen: "detail", id });
             }}
           />
         )}
 
         {view.screen === "detail" && (
-          <ProjectDetail detail={detail} loading={loading} onBack={goDashboard} />
+          <ProjectDetail
+            detail={detail}
+            loading={loading}
+            meta={meta}
+            onBack={goDashboard}
+            onEdit={(project) => setView({ screen: "edit", project })}
+            onChanged={(nextDetail, message) => {
+              setDetail(nextDetail);
+              setNotice({ kind: "success", text: message });
+              void loadProjects();
+            }}
+          />
         )}
       </main>
     </div>
@@ -228,16 +410,45 @@ function App() {
 function Dashboard({
   projects,
   loading,
-  stats,
+  meta,
   onSelect,
   onCreate
 }: {
   projects: ProjectSummary[];
   loading: boolean;
-  stats: { total: number; newCount: number; waiting: number; active: number };
+  meta: MetaResponse;
   onSelect: (id: string) => void;
   onCreate: () => void;
 }) {
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("all");
+
+  const stats = useMemo(
+    () => ({
+      total: projects.length,
+      newCount: projects.filter((project) => project.status === "新規").length,
+      waiting: projects.filter((project) => project.status.includes("確認")).length,
+      active: projects.filter((project) =>
+        ["制作待ち", "制作中", "AI品質チェック", "修正中", "再チェック"].includes(project.status)
+      ).length
+    }),
+    [projects]
+  );
+
+  const filtered = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    return projects.filter((project) => {
+      const matchesStatus = status === "all" || project.status === status;
+      const matchesText =
+        !normalized ||
+        [project.project_code, project.project_name, project.client_name]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalized);
+      return matchesStatus && matchesText;
+    });
+  }, [projects, query, status]);
+
   return (
     <>
       <section className="stat-grid" aria-label="案件サマリー">
@@ -248,10 +459,28 @@ function Dashboard({
       </section>
 
       <section className="panel">
-        <div className="panel-header">
+        <div className="panel-header dashboard-header">
           <div>
             <h2>案件一覧</h2>
             <p>受付から納品まで、すべての案件をここで管理します。</p>
+          </div>
+          <div className="filters">
+            <input
+              aria-label="案件を検索"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="案件名・顧客名・案件IDで検索"
+            />
+            <select
+              aria-label="ステータスで絞り込み"
+              value={status}
+              onChange={(event) => setStatus(event.target.value)}
+            >
+              <option value="all">全ステータス</option>
+              {meta.statuses.map((item) => (
+                <option key={item} value={item}>{item}</option>
+              ))}
+            </select>
           </div>
         </div>
 
@@ -264,9 +493,14 @@ function Dashboard({
             <p>最初の案件を手動登録して、AI Web Factoryを動かし始めましょう。</p>
             <button className="primary-button" onClick={onCreate}>最初の案件を登録</button>
           </div>
+        ) : filtered.length === 0 ? (
+          <div className="empty-state">
+            <h3>条件に合う案件がありません</h3>
+            <p>検索文字またはステータスを変更してください。</p>
+          </div>
         ) : (
           <div className="project-list">
-            {projects.map((project) => (
+            {filtered.map((project) => (
               <button className="project-row" key={project.id} onClick={() => onSelect(project.id)}>
                 <div className="project-main">
                   <span className="project-code">{project.project_code}</span>
@@ -275,8 +509,8 @@ function Dashboard({
                 </div>
                 <div className="project-meta">
                   <span className="status-pill">{project.status}</span>
-                  <span>{sourceLabel(project.source)}</span>
-                  <span>{formatDate(project.created_at)}</span>
+                  <span>{sourceLabel(project.source, meta)}</span>
+                  <span>更新 {formatDate(project.updated_at)}</span>
                 </div>
               </button>
             ))}
@@ -296,18 +530,26 @@ function StatCard({ label, value }: { label: string; value: number }) {
   );
 }
 
-function NewProject({
+function ProjectEditor({
+  mode,
+  projectId,
+  initial,
+  meta,
   onCancel,
-  onCreated
+  onSaved
 }: {
+  mode: "create" | "edit";
+  projectId?: string;
+  initial: ProjectFormState;
+  meta: MetaResponse;
   onCancel: () => void;
-  onCreated: (id: string) => void;
+  onSaved: (id: string) => void;
 }) {
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState(initial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const update = (key: keyof typeof emptyForm, value: string) => {
+  const update = (key: keyof ProjectFormState, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
   };
 
@@ -317,16 +559,17 @@ function NewProject({
     setSaving(true);
 
     try {
-      const response = await fetch("/api/projects", {
-        method: "POST",
+      const url = mode === "create" ? "/api/projects" : `/api/projects/${projectId}`;
+      const response = await fetch(url, {
+        method: mode === "create" ? "POST" : "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form)
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "案件を登録できませんでした。");
-      onCreated(data.id);
+      const data = await readJson(response);
+      const id = mode === "create" ? data.id : data.project.id;
+      onSaved(id);
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "登録に失敗しました。");
+      setError(submitError instanceof Error ? submitError.message : "保存に失敗しました。");
     } finally {
       setSaving(false);
     }
@@ -339,26 +582,38 @@ function NewProject({
       <section className="panel form-section">
         <div className="section-title">
           <span>01</span>
-          <div><h2>基本情報</h2><p>案件を識別するための情報です。</p></div>
+          <div>
+            <h2>基本情報</h2>
+            <p>案件を識別するための情報です。</p>
+          </div>
         </div>
         <div className="form-grid">
           <Field label="案件名 *" value={form.projectName} onChange={(v) => update("projectName", v)} placeholder="例：○○株式会社 コーポレートサイト制作" />
           <Field label="顧客名" value={form.clientName} onChange={(v) => update("clientName", v)} placeholder="会社名・屋号など" />
           <Field label="担当者名" value={form.contactName} onChange={(v) => update("contactName", v)} placeholder="顧客側の担当者" />
           <Field label="連絡先" value={form.contact} onChange={(v) => update("contact", v)} placeholder="メール・電話など" />
-          <SelectField label="受付元" value={form.source} onChange={(v) => update("source", v)} options={[
-            ["manual", "手動登録"], ["website", "自社サイト"], ["gmail", "Gmail"], ["line", "LINE"], ["sns", "SNS"], ["lancers", "Lancers"], ["coconala", "ココナラ"]
-          ]} />
-          <SelectField label="優先度" value={form.priority} onChange={(v) => update("priority", v)} options={[
-            ["低", "低"], ["通常", "通常"], ["高", "高"], ["最優先", "最優先"]
-          ]} />
+          <SelectField
+            label="受付元"
+            value={form.source}
+            onChange={(v) => update("source", v)}
+            options={meta.sources}
+          />
+          <SelectField
+            label="優先度"
+            value={form.priority}
+            onChange={(v) => update("priority", v)}
+            options={meta.priorities.map((value) => [value, value])}
+          />
         </div>
       </section>
 
       <section className="panel form-section">
         <div className="section-title">
           <span>02</span>
-          <div><h2>制作内容</h2><p>分からない項目は空欄のままで構いません。AIが勝手に補完しない設計にします。</p></div>
+          <div>
+            <h2>制作内容</h2>
+            <p>分からない項目は空欄のままでOKです。AIが事実を勝手に補完しない前提です。</p>
+          </div>
         </div>
         <div className="form-grid">
           <TextArea label="依頼内容 *" value={form.requestDetails} onChange={(v) => update("requestDetails", v)} placeholder="顧客から聞いた内容を、そのまま入力してください。" wide />
@@ -377,7 +632,9 @@ function NewProject({
 
       <div className="form-actions">
         <button type="button" className="secondary-button" onClick={onCancel}>キャンセル</button>
-        <button className="primary-button" disabled={saving}>{saving ? "登録中..." : "案件を登録"}</button>
+        <button className="primary-button" disabled={saving}>
+          {saving ? "保存中..." : mode === "create" ? "案件を登録" : "変更を保存"}
+        </button>
       </div>
     </form>
   );
@@ -399,7 +656,12 @@ function Field({
   return (
     <label className="field">
       <span>{label}</span>
-      <input type={type} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
+      <input
+        type={type}
+        value={value}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+      />
     </label>
   );
 }
@@ -420,7 +682,12 @@ function TextArea({
   return (
     <label className={wide ? "field field-wide" : "field"}>
       <span>{label}</span>
-      <textarea value={value} placeholder={placeholder} rows={4} onChange={(event) => onChange(event.target.value)} />
+      <textarea
+        value={value}
+        placeholder={placeholder}
+        rows={4}
+        onChange={(event) => onChange(event.target.value)}
+      />
     </label>
   );
 }
@@ -434,7 +701,7 @@ function SelectField({
   label: string;
   value: string;
   onChange: (value: string) => void;
-  options: Array<[string, string]>;
+  options: ReadonlyArray<readonly [string, string]>;
 }) {
   return (
     <label className="field">
@@ -451,34 +718,169 @@ function SelectField({
 function ProjectDetail({
   detail,
   loading,
-  onBack
+  meta,
+  onBack,
+  onEdit,
+  onChanged
 }: {
   detail: DetailResponse | null;
   loading: boolean;
+  meta: MetaResponse;
   onBack: () => void;
+  onEdit: (project: Project) => void;
+  onChanged: (detail: DetailResponse, message: string) => void;
 }) {
-  if (loading || !detail) return <div className="panel empty-state">読み込み中...</div>;
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const [approvalNote, setApprovalNote] = useState("");
 
-  const { project, latestAnalysis, latestSpec, history } = detail;
+  if (loading || !detail) {
+    return <div className="panel empty-state">読み込み中...</div>;
+  }
+
+  const { project, latestAnalysis, latestSpec, history, approvals, nextActions } = detail;
+
+  const changeStatus = async (status: string) => {
+    setActionBusy(true);
+    setActionError("");
+    try {
+      const response = await fetch(`/api/projects/${project.id}/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status })
+      });
+      const next = (await readJson(response)) as DetailResponse;
+      onChanged(next, `ステータスを「${status}」に変更しました。`);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "ステータス変更に失敗しました。");
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const recordApproval = async (approvalType: string, decision: "approved" | "rejected") => {
+    setActionBusy(true);
+    setActionError("");
+    try {
+      const response = await fetch(`/api/projects/${project.id}/approvals`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approvalType, decision, note: approvalNote })
+      });
+      const next = (await readJson(response)) as DetailResponse;
+      setApprovalNote("");
+      onChanged(
+        next,
+        `${meta.approvalTypes[approvalType] ?? "操作"}を${decision === "approved" ? "承認" : "差し戻し"}しました。`
+      );
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "承認記録に失敗しました。");
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const requiredApprovals = nextActions.filter((action) => action.approvalType);
 
   return (
     <div className="detail-stack">
       <div className="detail-toolbar">
         <button className="secondary-button" onClick={onBack}>← 一覧へ戻る</button>
-        <span className="status-pill">{project.status}</span>
+        <div className="toolbar-actions">
+          <button className="secondary-button" onClick={() => onEdit(project)}>案件を編集</button>
+          <span className="status-pill">{project.status}</span>
+        </div>
       </div>
+
+      {actionError && <div className="notice error">{actionError}</div>}
 
       <section className="panel project-hero">
         <div>
           <span className="project-code">{project.project_code}</span>
           <h2>{project.project_name}</h2>
-          <p>{project.client_name || "顧客名未設定"} ・ {sourceLabel(project.source)}</p>
+          <p>{project.client_name || "顧客名未設定"} ・ {sourceLabel(project.source, meta)}</p>
+          <small className="muted">最終更新 {formatDate(project.updated_at)}</small>
         </div>
         <div className="hero-side">
           <span>優先度</span>
           <strong>{project.priority}</strong>
         </div>
       </section>
+
+      <section className="panel workflow-panel">
+        <div className="panel-header">
+          <div>
+            <h3>工程を進める</h3>
+            <p>工程は順番にのみ進められます。重要操作は承認がないと進みません。</p>
+          </div>
+        </div>
+        {nextActions.length === 0 ? (
+          <div className="completion-box">この案件のワークフローは完了しています。</div>
+        ) : (
+          <div className="next-actions">
+            {nextActions.map((action) => (
+              <button
+                key={action.status}
+                className="primary-button"
+                disabled={actionBusy || (Boolean(action.approvalType) && !action.approvalSatisfied)}
+                onClick={() => void changeStatus(action.status)}
+                title={
+                  action.approvalType && !action.approvalSatisfied
+                    ? `${action.approvalLabel}の承認が必要です`
+                    : undefined
+                }
+              >
+                → {action.status}
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {requiredApprovals.length > 0 && (
+        <section className="panel approval-panel">
+          <div>
+            <h3>人間の承認</h3>
+            <p className="muted">ここはAIが自動決定しません。あなたの明示操作を履歴に残します。</p>
+          </div>
+          <label className="field approval-note">
+            <span>承認メモ（任意）</span>
+            <input
+              value={approvalNote}
+              onChange={(event) => setApprovalNote(event.target.value)}
+              placeholder="判断理由や確認内容を残せます"
+            />
+          </label>
+          <div className="approval-actions">
+            {requiredApprovals.map((action) => (
+              <div className="approval-action" key={action.approvalType}>
+                <div>
+                  <strong>{action.approvalLabel}</strong>
+                  <span className={action.approvalSatisfied ? "approval-ok" : "approval-wait"}>
+                    {action.approvalSatisfied ? "承認済み" : "承認待ち"}
+                  </span>
+                </div>
+                <div>
+                  <button
+                    className="secondary-button"
+                    disabled={actionBusy}
+                    onClick={() => void recordApproval(action.approvalType!, "rejected")}
+                  >
+                    差し戻す
+                  </button>
+                  <button
+                    className="primary-button"
+                    disabled={actionBusy}
+                    onClick={() => void recordApproval(action.approvalType!, "approved")}
+                  >
+                    承認する
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <div className="detail-grid">
         <section className="panel">
@@ -509,41 +911,63 @@ function ProjectDetail({
         <section className="panel phase-card">
           <div className="phase-number">AI 01</div>
           <h3>AI案件分析</h3>
-          <p>{latestAnalysis ? "分析データがあります。" : "次の開発段階でAI分析機能を接続します。"}</p>
-          <button className="disabled-button" disabled>未実装</button>
+          <p>{latestAnalysis ? "分析データがあります。" : "AI接続前。次の開発段階で実装します。"}</p>
+          <button className="disabled-button" disabled>AI未接続</button>
         </section>
         <section className="panel phase-card">
           <div className="phase-number">AI 02</div>
           <h3>制作仕様書</h3>
-          <p>{latestSpec ? "仕様書データがあります。" : "AI分析結果から制作仕様書を生成する予定です。"}</p>
-          <button className="disabled-button" disabled>未実装</button>
+          <p>{latestSpec ? "仕様書データがあります。" : "AI分析結果から生成する予定です。"}</p>
+          <button className="disabled-button" disabled>AI未接続</button>
         </section>
         <section className="panel phase-card">
-          <div className="phase-number">HUMAN</div>
-          <h3>承認</h3>
-          <p>制作開始などの重要操作は、必ず人間の明示承認を通します。</p>
-          <button className="disabled-button" disabled>未実装</button>
+          <div className="phase-number">SAFE</div>
+          <h3>安全設計</h3>
+          <p>制作開始と最終納品は、バックエンド側でも承認なしでは進めません。</p>
+          <span className="safe-badge">承認ガード有効</span>
         </section>
       </div>
 
-      <section className="panel">
-        <h3>履歴</h3>
-        {history.length === 0 ? (
-          <p className="muted">履歴はまだありません。</p>
-        ) : (
-          <div className="timeline">
-            {history.map((item) => (
-              <div key={item.id} className="timeline-item">
-                <span />
-                <div>
-                  <strong>{item.description}</strong>
+      <div className="detail-grid">
+        <section className="panel">
+          <h3>承認履歴</h3>
+          {approvals.length === 0 ? (
+            <p className="muted">承認履歴はまだありません。</p>
+          ) : (
+            <div className="approval-history">
+              {approvals.map((item) => (
+                <div key={item.id}>
+                  <strong>{meta.approvalTypes[item.approval_type] ?? item.approval_type}</strong>
+                  <span className={item.decision === "approved" ? "approval-ok" : "approval-rejected"}>
+                    {item.decision === "approved" ? "承認" : "差し戻し"}
+                  </span>
                   <small>{formatDate(item.created_at)}</small>
+                  {item.note && <p>{item.note}</p>}
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="panel">
+          <h3>変更・操作履歴</h3>
+          {history.length === 0 ? (
+            <p className="muted">履歴はまだありません。</p>
+          ) : (
+            <div className="timeline">
+              {history.map((item) => (
+                <div key={item.id} className="timeline-item">
+                  <span />
+                  <div>
+                    <strong>{item.description}</strong>
+                    <small>{formatDate(item.created_at)}</small>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   );
 }
