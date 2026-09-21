@@ -18,6 +18,12 @@ export function createDatabase(databasePath = DATABASE_PATH) {
   db.pragma("foreign_keys = ON");
   db.pragma("busy_timeout = 5000");
 
+  const integrity = db.pragma("integrity_check", { simple: true });
+  if (integrity !== "ok") {
+    db.close();
+    throw new Error("SQLite database integrity check failed.");
+  }
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY,
