@@ -678,3 +678,239 @@ h3 {
     flex: 1;
   }
 }
+
+
+/* Phase 1 operational controls */
+.sidebar-footer {
+  display: grid;
+  gap: 10px;
+}
+
+.backup-link {
+  border: 1px solid #2b3850;
+  background: transparent;
+  color: #aeb7c9;
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.backup-link:hover {
+  color: white;
+  border-color: #53627c;
+}
+
+.topbar-actions,
+.toolbar-actions,
+.next-actions,
+.approval-actions,
+.approval-action > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.notice.success {
+  margin-bottom: 18px;
+  background: #ecfbf3;
+  border: 1px solid #b9ebd0;
+  color: #17633d;
+}
+
+.dashboard-header {
+  align-items: flex-end;
+}
+
+.filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filters input,
+.filters select {
+  min-height: 40px;
+  border: 1px solid #dce1ea;
+  border-radius: 10px;
+  background: white;
+  color: #172033;
+  padding: 8px 11px;
+}
+
+.filters input {
+  min-width: 250px;
+}
+
+.workflow-panel {
+  border-color: #dce2ff;
+  background: linear-gradient(180deg, #ffffff 0%, #fafbff 100%);
+}
+
+.workflow-panel .panel-header {
+  margin-bottom: 16px;
+}
+
+.workflow-panel .panel-header p {
+  margin-bottom: 0;
+  color: #758096;
+}
+
+.next-actions {
+  flex-wrap: wrap;
+}
+
+.completion-box {
+  border-radius: 10px;
+  padding: 14px;
+  background: #edf9f3;
+  color: #17633d;
+  font-weight: 700;
+}
+
+.approval-panel {
+  display: grid;
+  gap: 16px;
+  border-color: #f2dca3;
+  background: #fffdf7;
+}
+
+.approval-note {
+  max-width: 680px;
+}
+
+.approval-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.approval-action {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border: 1px solid #eadfbf;
+  background: white;
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.approval-action > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.approval-ok,
+.approval-wait,
+.approval-rejected,
+.safe-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.approval-ok,
+.safe-badge {
+  background: #e8f8ef;
+  color: #187346;
+}
+
+.approval-wait {
+  background: #fff3d7;
+  color: #8b6213;
+}
+
+.approval-rejected {
+  background: #fff0f0;
+  color: #a12b2b;
+}
+
+.approval-history {
+  display: grid;
+  gap: 10px;
+}
+
+.approval-history > div {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto auto;
+  gap: 8px 12px;
+  align-items: center;
+  border-bottom: 1px solid #edf0f4;
+  padding-bottom: 10px;
+}
+
+.approval-history small {
+  color: #7f899c;
+}
+
+.approval-history p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #59657a;
+  font-size: 13px;
+}
+
+.safe-badge {
+  margin-top: auto;
+}
+
+@media (max-width: 980px) {
+  .dashboard-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .filters input,
+  .filters select {
+    flex: 1;
+  }
+}
+
+@media (max-width: 680px) {
+  .desktop-only {
+    display: none;
+  }
+
+  .filters {
+    display: grid;
+    width: 100%;
+  }
+
+  .filters input,
+  .filters select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .toolbar-actions {
+    align-items: flex-end;
+    flex-direction: column-reverse;
+  }
+
+  .approval-action {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .approval-action > div:last-child {
+    width: 100%;
+  }
+
+  .approval-action > div:last-child button {
+    flex: 1;
+  }
+
+  .approval-history > div {
+    grid-template-columns: 1fr auto;
+  }
+
+  .approval-history small {
+    grid-column: 1 / -1;
+  }
+}
