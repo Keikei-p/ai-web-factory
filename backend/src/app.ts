@@ -299,8 +299,8 @@ export function createApp(db: Database.Database, options: AppOptions = {}) {
 
   app.post("/api/projects/:id/approvals", (req, res) => {
     const project = db
-      .prepare("SELECT id FROM projects WHERE id = ?")
-      .get(req.params.id);
+      .prepare("SELECT id, status FROM projects WHERE id = ?")
+      .get(req.params.id) as { id: string; status: string } | undefined;
 
     if (!project) {
       res.status(404).json({ error: "案件が見つかりません。" });
@@ -317,6 +317,15 @@ export function createApp(db: Database.Database, options: AppOptions = {}) {
     }
     if (decision !== "approved" && decision !== "rejected") {
       res.status(400).json({ error: "承認結果が正しくありません。" });
+      return;
+    }
+
+    if (approvalType === "production_start" && project.status !== "制作待ち") {
+      res.status(409).json({ error: "制作開始はステータスが「制作待ち」の時だけ承認できます。" });
+      return;
+    }
+    if (approvalType === "final_delivery" && project.status !== "最終確認") {
+      res.status(409).json({ error: "最終納品はステータスが「最終確認」の時だけ承認できます。" });
       return;
     }
 
