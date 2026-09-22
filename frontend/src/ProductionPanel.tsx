@@ -5,6 +5,8 @@ import type { AnalysisWorkspace } from "./AnalysisPanel";
 export type ProductionWorkspace = {
   mode: string;
   externalTransmission: boolean;
+  productionStartApproved: boolean;
+  finalDeliveryApproved: boolean;
   revisionTypes: Record<string, string>;
   builds: Array<{
     id: string;
@@ -93,14 +95,19 @@ export function ProductionPanel({
 
       {!approvedLatestSpec && (
         <div className="notice warning">
-          最新の制作仕様書を承認すると、サイト生成を開始できます。
+          最新の制作仕様書を承認すると、サイト生成の準備ができます。
+        </div>
+      )}
+      {approvedLatestSpec && !workspace.productionStartApproved && (
+        <div className="notice warning">
+          サイト生成には、工程の「制作開始」をあなたが明示承認する必要があります。
         </div>
       )}
 
       <div className="production-actions">
         <button
           className="primary-button"
-          disabled={busy || !approvedLatestSpec}
+          disabled={busy || !approvedLatestSpec || !workspace.productionStartApproved}
           onClick={() => approvedLatestSpec && onAction({
             route: "site-builds",
             body: { specificationId: approvedLatestSpec.id },
@@ -243,11 +250,19 @@ export function ProductionPanel({
           <div className="export-block">
             <h4>納品用フォルダ</h4>
             <p className="muted">
-              品質チェックで失敗がない最新版だけ、PC内の納品用フォルダへ書き出せます。本番公開は行いません。
+              品質チェックで失敗がなく、あなたが「最終納品」を明示承認した最新版だけ、PC内の納品用フォルダへ書き出せます。本番公開は行いません。
             </p>
+            {!workspace.finalDeliveryApproved && (
+              <p className="notice warning">現在は最終納品の承認待ちです。</p>
+            )}
             <button
               className="primary-button"
-              disabled={busy || !latestBuild.latestQuality || latestBuild.latestQuality.overall === "fail"}
+              disabled={
+                busy ||
+                !workspace.finalDeliveryApproved ||
+                !latestBuild.latestQuality ||
+                latestBuild.latestQuality.overall === "fail"
+              }
               onClick={() => onAction({
                 route: `site-builds/${latestBuild.id}/export`,
                 body: {},
