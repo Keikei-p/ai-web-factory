@@ -19,10 +19,13 @@ import {
 import { BACKUP_DIR, createDatabaseBackup, listBackups } from "./database.js";
 import { analysisWorkspace, registerAnalysisRoutes } from "./analysis-routes.js";
 import type { AnalysisProvider } from "./analysis.js";
+import { productionWorkspace, registerProductionRoutes } from "./production-routes.js";
 
 type AppOptions = {
   backupDirectory?: string;
   analysisProvider?: AnalysisProvider;
+  generatedDirectory?: string;
+  exportDirectory?: string;
 };
 
 type ProjectRow = {
@@ -103,6 +106,7 @@ function projectDetail(db: Database.Database, id: string) {
     approvals,
     history,
     analysisWorkspace: analysisWorkspace(db, project),
+    productionWorkspace: productionWorkspace(db, project.id),
     nextActions: nextActions(db, project)
   };
 }
@@ -416,6 +420,10 @@ export function createApp(db: Database.Database, options: AppOptions = {}) {
   });
 
   registerAnalysisRoutes(app, db, (id) => projectDetail(db, id), options.analysisProvider);
+  registerProductionRoutes(app, db, (id) => projectDetail(db, id), {
+    generatedDirectory: options.generatedDirectory,
+    exportDirectory: options.exportDirectory
+  });
 
   app.get("/api/backups", (_req, res) => {
     res.json(listBackups(backupDirectory));
