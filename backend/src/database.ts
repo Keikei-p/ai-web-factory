@@ -9,6 +9,8 @@ export const PROJECT_ROOT = path.resolve(moduleDir, "../..");
 export const DATA_DIR = path.join(PROJECT_ROOT, "data");
 export const DATABASE_PATH = path.join(DATA_DIR, "ai-web-factory.db");
 export const BACKUP_DIR = path.join(DATA_DIR, "backups");
+export const GENERATED_DIR = path.join(DATA_DIR, "generated");
+export const EXPORT_DIR = path.join(DATA_DIR, "exports");
 
 export function createDatabase(databasePath = DATABASE_PATH) {
   fs.mkdirSync(path.dirname(databasePath), { recursive: true });
@@ -100,10 +102,48 @@ export function createDatabase(databasePath = DATABASE_PATH) {
       FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS site_builds (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      spec_id TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      output_dir TEXT NOT NULL,
+      manifest_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+      FOREIGN KEY(spec_id) REFERENCES project_specs(id) ON DELETE RESTRICT
+    );
+
+    CREATE TABLE IF NOT EXISTS quality_checks (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      build_id TEXT NOT NULL,
+      result_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+      FOREIGN KEY(build_id) REFERENCES site_builds(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS revision_requests (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      from_build_id TEXT NOT NULL,
+      to_build_id TEXT NOT NULL,
+      instruction_type TEXT NOT NULL,
+      value_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+      FOREIGN KEY(from_build_id) REFERENCES site_builds(id) ON DELETE RESTRICT,
+      FOREIGN KEY(to_build_id) REFERENCES site_builds(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_projects_created_at ON projects(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
     CREATE INDEX IF NOT EXISTS idx_history_project_id ON project_history(project_id);
     CREATE INDEX IF NOT EXISTS idx_approvals_project_id ON project_approvals(project_id);
+    CREATE INDEX IF NOT EXISTS idx_site_builds_project_id ON site_builds(project_id, version DESC);
+    CREATE INDEX IF NOT EXISTS idx_quality_checks_build_id ON quality_checks(build_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_revision_requests_project_id ON revision_requests(project_id, created_at DESC);
   `);
 
   return db;
