@@ -17,9 +17,12 @@ import {
   PROJECT_SOURCE_OPTIONS
 } from "./validation.js";
 import { BACKUP_DIR, createDatabaseBackup, listBackups } from "./database.js";
+import { analysisWorkspace, registerAnalysisRoutes } from "./analysis-routes.js";
+import type { AnalysisProvider } from "./analysis.js";
 
 type AppOptions = {
   backupDirectory?: string;
+  analysisProvider?: AnalysisProvider;
 };
 
 type ProjectRow = {
@@ -99,6 +102,7 @@ function projectDetail(db: Database.Database, id: string) {
     latestSpec,
     approvals,
     history,
+    analysisWorkspace: analysisWorkspace(db, project),
     nextActions: nextActions(db, project)
   };
 }
@@ -410,6 +414,8 @@ export function createApp(db: Database.Database, options: AppOptions = {}) {
     changeStatus();
     res.json(projectDetail(db, project.id));
   });
+
+  registerAnalysisRoutes(app, db, (id) => projectDetail(db, id), options.analysisProvider);
 
   app.get("/api/backups", (_req, res) => {
     res.json(listBackups(backupDirectory));

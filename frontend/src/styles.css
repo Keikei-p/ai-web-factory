@@ -6,6 +6,16 @@
   text-rendering: optimizeLegibility;
 }
 
+.analysis-panel { min-width: 0; }
+.analysis-panel p, .analysis-panel li { line-height: 1.8; overflow-wrap: anywhere; }
+.analysis-panel .panel-header { margin-bottom: 16px; }
+.analysis-actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 18px 0; }
+.analysis-actions button:disabled { opacity: .55; cursor: not-allowed; }
+.analysis-section { border-top: 1px solid #e3e7ee; margin-top: 24px; padding-top: 24px; }
+.analysis-result h4 { margin: 24px 0 12px; }
+.analysis-result dd { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
+.analysis-result dt small { display: block; font-weight: normal; }
+
 * {
   box-sizing: border-box;
 }
