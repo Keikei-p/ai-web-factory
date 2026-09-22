@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { AnalysisPanel, type AnalysisWorkspace } from "./AnalysisPanel";
 
 type ProjectSummary = {
   id: string;
@@ -62,6 +63,7 @@ type DetailResponse = {
   approvals: Approval[];
   history: HistoryItem[];
   nextActions: NextAction[];
+  analysisWorkspace: AnalysisWorkspace;
 };
 
 type MetaResponse = {
@@ -738,7 +740,20 @@ function ProjectDetail({
     return <div className="panel empty-state">読み込み中...</div>;
   }
 
-  const { project, latestAnalysis, latestSpec, history, approvals, nextActions } = detail;
+  const { project, history, approvals, nextActions } = detail;
+
+  const runAnalysisAction = async (route: string, body: object, message: string) => {
+    setActionBusy(true);
+    setActionError("");
+    try {
+      const response = await fetch(`/api/projects/${project.id}/${route}`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+      });
+      onChanged(await readJson(response) as DetailResponse, message);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "処理に失敗しました。再実行してください。");
+    } finally { setActionBusy(false); }
+  };
 
   const changeStatus = async (status: string) => {
     setActionBusy(true);
@@ -907,26 +922,9 @@ function ProjectDetail({
         </section>
       </div>
 
-      <div className="phase-grid">
-        <section className="panel phase-card">
-          <div className="phase-number">AI 01</div>
-          <h3>AI案件分析</h3>
-          <p>{latestAnalysis ? "分析データがあります。" : "AI接続前。次の開発段階で実装します。"}</p>
-          <button className="disabled-button" disabled>AI未接続</button>
-        </section>
-        <section className="panel phase-card">
-          <div className="phase-number">AI 02</div>
-          <h3>制作仕様書</h3>
-          <p>{latestSpec ? "仕様書データがあります。" : "AI分析結果から生成する予定です。"}</p>
-          <button className="disabled-button" disabled>AI未接続</button>
-        </section>
-        <section className="panel phase-card">
-          <div className="phase-number">SAFE</div>
-          <h3>安全設計</h3>
-          <p>制作開始と最終納品は、バックエンド側でも承認なしでは進めません。</p>
-          <span className="safe-badge">承認ガード有効</span>
-        </section>
-      </div>
+      <AnalysisPanel key={project.id} workspace={detail.analysisWorkspace} busy={actionBusy}
+        onAnalyze={() => void runAnalysisAction("analyses", {}, "ローカル分析を保存しました。")}
+        onGenerate={analysisId => void runAnalysisAction("specifications", { analysisId }, "仕様書の下書きを保存しました。")} />
 
       <div className="detail-grid">
         <section className="panel">
