@@ -33,6 +33,7 @@ export const STATUS_TRANSITIONS: Record<ProjectStatus, readonly ProjectStatus[]>
 };
 
 export const APPROVAL_TYPES = {
+  specification_approval: "制作仕様書",
   production_start: "制作開始",
   customer_contact: "顧客への連絡",
   paid_service: "有料サービス契約",
