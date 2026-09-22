@@ -201,10 +201,12 @@ export function inspectSite(buildId: string, outputDirectory: string, manifest: 
     if (!/@media\s*\(/i.test(html)) responsive = false;
     for (const match of html.matchAll(/href="([^"#][^"]*)"/gi)) {
       const href = match[1];
+      if (!href) continue;
       if (!/^(?:https?:|mailto:|tel:)/i.test(href) && !files.has(href)) brokenLinks.push(`${file} → ${href}`);
     }
     for (const match of html.matchAll(/<img[^>]+src="([^"]+)"/gi)) {
       const src = match[1];
+      if (!src) continue;
       if (!/^(?:https?:|data:)/i.test(src) && !files.has(src)) missingImages.push(`${file} → ${src}`);
     }
   }
