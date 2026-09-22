@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { AnalysisPanel, type AnalysisWorkspace } from "./AnalysisPanel";
+import { ProductionPanel, type ProductionWorkspace } from "./ProductionPanel";
 
 type ProjectSummary = {
   id: string;
@@ -64,6 +65,7 @@ type DetailResponse = {
   history: HistoryItem[];
   nextActions: NextAction[];
   analysisWorkspace: AnalysisWorkspace;
+  productionWorkspace: ProductionWorkspace;
 };
 
 type MetaResponse = {
@@ -742,17 +744,27 @@ function ProjectDetail({
 
   const { project, history, approvals, nextActions } = detail;
 
-  const runAnalysisAction = async (route: string, body: object, message: string) => {
+  const runProjectAction = async (route: string, body: object, message: string) => {
     setActionBusy(true);
     setActionError("");
     try {
       const response = await fetch(`/api/projects/${project.id}/${route}`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
       });
-      onChanged(await readJson(response) as DetailResponse, message);
+      const data = await readJson(response);
+      if (data?.project && data?.analysisWorkspace) {
+        onChanged(data as DetailResponse, message);
+      } else {
+        const refreshed = await fetch(`/api/projects/${project.id}`);
+        onChanged(await readJson(refreshed) as DetailResponse, message);
+      }
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "処理に失敗しました。再実行してください。");
-    } finally { setActionBusy(false); }
+    } finally {
+      setActionBusy(false);
+    }
   };
 
   const changeStatus = async (status: string) => {
@@ -922,9 +934,32 @@ function ProjectDetail({
         </section>
       </div>
 
-      <AnalysisPanel key={project.id} workspace={detail.analysisWorkspace} busy={actionBusy}
-        onAnalyze={() => void runAnalysisAction("analyses", {}, "ローカル分析を保存しました。")}
-        onGenerate={analysisId => void runAnalysisAction("specifications", { analysisId }, "仕様書の下書きを保存しました。")} />
+      <AnalysisPanel
+        key={project.id}
+        workspace={detail.analysisWorkspace}
+        busy={actionBusy}
+        onAnalyze={() => void runProjectAction("analyses", {}, "ローカル分析を保存しました。")}
+        onGenerate={(analysisId) =>
+          void runProjectAction("specifications", { analysisId }, "仕様書の下書きを保存しました。")
+        }
+        onDecision={(specId, decision, note) =>
+          void runProjectAction(
+            `specifications/${specId}/decision`,
+            { decision, note },
+            `制作仕様書を${decision === "approved" ? "承認" : "差し戻し"}しました。`
+          )
+        }
+      />
+
+      <ProductionPanel
+        projectId={project.id}
+        analysisWorkspace={detail.analysisWorkspace}
+        workspace={detail.productionWorkspace}
+        busy={actionBusy}
+        onAction={({ route, body = {}, message }) =>
+          void runProjectAction(route, body, message)
+        }
+      />
 
       <div className="detail-grid">
         <section className="panel">
