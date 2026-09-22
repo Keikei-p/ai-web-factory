@@ -970,7 +970,11 @@ function ProjectDetail({
             <div className="approval-history">
               {approvals.map((item) => (
                 <div key={item.id}>
-                  <strong>{meta.approvalTypes[item.approval_type] ?? item.approval_type}</strong>
+                  <strong>{
+                    item.approval_type === "specification_approval"
+                      ? "制作仕様書"
+                      : (meta.approvalTypes[item.approval_type] ?? item.approval_type)
+                  }</strong>
                   <span className={item.decision === "approved" ? "approval-ok" : "approval-rejected"}>
                     {item.decision === "approved" ? "承認" : "差し戻し"}
                   </span>
