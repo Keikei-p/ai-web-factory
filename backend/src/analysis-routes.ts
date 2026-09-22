@@ -20,13 +20,14 @@ function readAnalyses(db: Database.Database, projectId: string) {
 export function analysisWorkspace(db: Database.Database, project: Record<string, unknown> & { id: string }) {
   const hash = sourceHash(project);
   const analyses = readAnalyses(db, project.id).map(item => ({ ...item, stale: item.sourceHash !== hash }));
-  const rows = db.prepare("SELECT id, version, content_json, created_at FROM project_specs WHERE project_id = ? ORDER BY version DESC, rowid DESC")
-    .all(project.id) as { id: string; version: number; content_json: string; created_at: string }[];
+  const rows = db.prepare("SELECT id, version, content_json, status, created_at FROM project_specs WHERE project_id = ? ORDER BY version DESC, rowid DESC")
+    .all(project.id) as { id: string; version: number; content_json: string; status: string; created_at: string }[];
   const specifications = rows.flatMap(row => {
     try {
       const content = JSON.parse(row.content_json) as ReturnType<typeof buildSpecification>;
       return content.schemaVersion === 1 && content.analysisId ? [{ id: row.id, version: row.version,
-        createdAt: row.created_at, content, stale: content.sourceHash !== hash || content.analysisId !== analyses[0]?.id }] : [];
+        status: row.status, createdAt: row.created_at, content,
+        stale: content.sourceHash !== hash || content.analysisId !== analyses[0]?.id }] : [];
     } catch { return []; }
   });
   return { mode: "local-stub", externalTransmission: false, analyses, specifications };
