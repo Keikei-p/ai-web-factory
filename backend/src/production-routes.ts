@@ -46,6 +46,13 @@ function latestQuality(db: Database.Database, buildId: string) {
   catch { return null; }
 }
 
+function latestApprovalApproved(db: Database.Database, projectId: string, approvalType: string) {
+  const row = db.prepare(
+    "SELECT decision FROM project_approvals WHERE project_id = ? AND approval_type = ? ORDER BY rowid DESC LIMIT 1"
+  ).get(projectId, approvalType) as { decision: string } | undefined;
+  return row?.decision === "approved";
+}
+
 export function productionWorkspace(db: Database.Database, projectId: string) {
   const rows = db.prepare(
     "SELECT * FROM site_builds WHERE project_id = ? ORDER BY version DESC, rowid DESC"
@@ -72,7 +79,15 @@ export function productionWorkspace(db: Database.Database, projectId: string) {
      FROM revision_requests WHERE project_id = ? ORDER BY rowid DESC`
   ).all(projectId) as Array<Record<string, unknown>>;
 
-  return { mode: "local-template", externalTransmission: false, revisionTypes: REVISION_TYPES, builds, revisions };
+  return {
+    mode: "local-template",
+    externalTransmission: false,
+    productionStartApproved: latestApprovalApproved(db, projectId, "production_start"),
+    finalDeliveryApproved: latestApprovalApproved(db, projectId, "final_delivery"),
+    revisionTypes: REVISION_TYPES,
+    builds,
+    revisions
+  };
 }
 
 function normalizeRevision(type: unknown, value: unknown): { type: RevisionType; value: unknown; overrides: SiteOverrides } {
@@ -193,6 +208,9 @@ export function registerProductionRoutes(
       const project = projectById(projectId);
       const specId = req.body?.specificationId;
       if (!project) { res.status(404).json({ error: "案件が見つかりません。" }); return; }
+      if (!latestApprovalApproved(db, projectId, "production_start")) {
+        res.status(409).json({ error: "サイト制作には「制作開始」の明示承認が必要です。" }); return;
+      }
       if (typeof specId !== "string") { res.status(400).json({ error: "承認済み仕様書を指定してください。" }); return; }
       const specRow = specById(projectId, specId);
       if (!specRow || specRow.status !== "approved") {
@@ -240,6 +258,9 @@ export function registerProductionRoutes(
       const project = projectById(projectId);
       const from = buildById(projectId, String(req.params.buildId));
       if (!project || !from) { res.status(404).json({ error: "案件または生成サイトが見つかりません。" }); return; }
+      if (!latestApprovalApproved(db, projectId, "production_start")) {
+        res.status(409).json({ error: "サイト修正には「制作開始」の明示承認が必要です。" }); return;
+      }
       const specRow = specById(projectId, from.spec_id);
       if (!specRow || specRow.status !== "approved") {
         res.status(409).json({ error: "承認済み仕様書に基づくサイトだけ修正できます。" }); return;
@@ -273,6 +294,9 @@ export function registerProductionRoutes(
       const project = projectById(projectId);
       const build = buildById(projectId, String(req.params.buildId));
       if (!project || !build) { res.status(404).json({ error: "案件または生成サイトが見つかりません。" }); return; }
+      if (!latestApprovalApproved(db, projectId, "final_delivery")) {
+        res.status(409).json({ error: "納品用書き出しには「最終納品」の明示承認が必要です。" }); return;
+      }
 
       const quality = latestQuality(db, build.id);
       if (!quality || quality.overall === "fail") {
