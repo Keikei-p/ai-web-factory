@@ -14,3 +14,5 @@ data/*.sqlite
 data/*.sqlite-*
 data/backups/
 !data/.gitkeep
+data/generated/
+data/exports/
