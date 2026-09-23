@@ -16,3 +16,6 @@ data/backups/
 !data/.gitkeep
 data/generated/
 data/exports/
+.firebase/
+firebase-debug.log
+firestore-debug.log
