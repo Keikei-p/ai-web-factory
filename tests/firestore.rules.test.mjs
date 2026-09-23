@@ -64,7 +64,8 @@ test("工程飛ばしと承認なし制作開始・納品を拒否する", async
 
   try {
     const db = env.authenticatedContext("owner-a").firestore();
-    const projectRef = doc(db, "projects", projectId);
+    const workflowProjectId = "workflow-project";
+    const projectRef = doc(db, "projects", workflowProjectId);
 
     await assertSucceeds(setDoc(projectRef, baseProject("owner-a")));
 
@@ -90,7 +91,7 @@ test("工程飛ばしと承認なし制作開始・納品を拒否する", async
       workflow_approvals: { production_start: "approved" },
       updated_at: serverTimestamp()
     });
-    productionApproval.set(doc(db, "projects", projectId, "approvals", "production-start"), {
+    productionApproval.set(doc(db, "projects", workflowProjectId, "approvals", "production-start"), {
       owner_id: "owner-a",
       approval_type: "production_start",
       decision: "approved",
@@ -126,7 +127,7 @@ test("工程飛ばしと承認なし制作開始・納品を拒否する", async
       final_confirmation: 1,
       updated_at: serverTimestamp()
     });
-    deliveryApproval.set(doc(db, "projects", projectId, "approvals", "final-delivery"), {
+    deliveryApproval.set(doc(db, "projects", workflowProjectId, "approvals", "final-delivery"), {
       owner_id: "owner-a",
       approval_type: "final_delivery",
       decision: "approved",
@@ -150,7 +151,8 @@ test("owner_id変更や不正な重要承認を拒否する", async () => {
 
   try {
     const db = env.authenticatedContext("owner-a").firestore();
-    const projectRef = doc(db, "projects", projectId);
+    const invalidProjectId = "invalid-project";
+    const projectRef = doc(db, "projects", invalidProjectId);
 
     await assertSucceeds(setDoc(projectRef, baseProject("owner-a")));
 
@@ -165,7 +167,7 @@ test("owner_id変更や不正な重要承認を拒否する", async () => {
       final_confirmation: 1,
       updated_at: serverTimestamp()
     });
-    invalidApproval.set(doc(db, "projects", projectId, "approvals", "invalid-final"), {
+    invalidApproval.set(doc(db, "projects", invalidProjectId, "approvals", "invalid-final"), {
       owner_id: "owner-a",
       approval_type: "final_delivery",
       decision: "approved",
