@@ -8,7 +8,6 @@ import {
   runTransaction,
   serverTimestamp,
   Timestamp,
-  updateDoc,
   where,
   writeBatch
 } from "firebase/firestore";
@@ -90,7 +89,14 @@ function toIso(value: unknown): string | null {
   return null;
 }
 
-function normalizeProject(id: string, raw: Record<string, unknown>) {
+type LooseRecord = Record<string, any>;
+
+function normalizeProject(id: string, raw: LooseRecord): LooseRecord & {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  delivered_at: string | null;
+} {
   return {
     id,
     ...raw,
@@ -100,7 +106,11 @@ function normalizeProject(id: string, raw: Record<string, unknown>) {
   };
 }
 
-function normalizeChild(id: string, raw: Record<string, unknown>) {
+function normalizeChild(id: string, raw: LooseRecord): LooseRecord & {
+  id: string;
+  created_at: string;
+  updated_at?: string;
+} {
   return {
     id,
     ...raw,
