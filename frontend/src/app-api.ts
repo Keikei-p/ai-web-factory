@@ -1,4 +1,17 @@
-import { cloudMode, requireSupabase } from "./supabase";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  orderBy,
+  query,
+  runTransaction,
+  serverTimestamp,
+  Timestamp,
+  updateDoc,
+  writeBatch
+} from "firebase/firestore";
+import { cloudMode, requireFirebase } from "./firebase";
 
 const STATUSES = [
   "新規", "AI分析中", "情報不足", "確認待ち", "制作待ち", "制作中",
@@ -69,6 +82,32 @@ function makeProjectCode(id: string) {
   return `AWF-${stamp}-${id.slice(0, 4).toUpperCase()}`;
 }
 
+function toIso(value: unknown): string | null {
+  if (value instanceof Timestamp) return value.toDate().toISOString();
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "string") return value;
+  return null;
+}
+
+function normalizeProject(id: string, raw: Record<string, unknown>) {
+  return {
+    id,
+    ...raw,
+    created_at: toIso(raw.created_at) ?? new Date(0).toISOString(),
+    updated_at: toIso(raw.updated_at) ?? new Date(0).toISOString(),
+    delivered_at: toIso(raw.delivered_at)
+  };
+}
+
+function normalizeChild(id: string, raw: Record<string, unknown>) {
+  return {
+    id,
+    ...raw,
+    created_at: toIso(raw.created_at) ?? new Date(0).toISOString(),
+    updated_at: toIso(raw.updated_at) ?? undefined
+  };
+}
+
 async function localJson(route: string, options?: RequestInit) {
   const response = await fetch(route, options);
   const data = await response.json().catch(() => ({}));
@@ -76,40 +115,41 @@ async function localJson(route: string, options?: RequestInit) {
   return data;
 }
 
-async function cloudHistory(projectId: string, eventType: string, description: string) {
-  const client = requireSupabase();
-  const { error } = await client.from("project_history").insert({
-    project_id: projectId,
-    event_type: eventType,
-    description
-  });
-  if (error) throw error;
+function currentUserId() {
+  const { auth } = requireFirebase();
+  const uid = auth.currentUser?.uid;
+  if (!uid) throw new Error("ログインが必要です。");
+  return uid;
 }
 
 async function cloudDetail(id: string) {
-  const client = requireSupabase();
-  const [projectResult, approvalsResult, historyResult, analysesResult, specsResult] = await Promise.all([
-    client.from("projects").select("*").eq("id", id).single(),
-    client.from("project_approvals").select("*").eq("project_id", id).order("created_at", { ascending: false }),
-    client.from("project_history").select("*").eq("project_id", id).order("created_at", { ascending: false }),
-    client.from("project_analyses").select("*").eq("project_id", id).order("created_at", { ascending: false }),
-    client.from("project_specs").select("*").eq("project_id", id).order("version", { ascending: false })
+  const { db } = requireFirebase();
+  const projectRef = doc(db, "projects", id);
+  const projectSnapshot = await getDoc(projectRef);
+
+  if (!projectSnapshot.exists()) {
+    throw new Error("案件が見つかりません。");
+  }
+
+  const [approvalSnapshots, historySnapshots, analysisSnapshots, specSnapshots] = await Promise.all([
+    getDocs(query(collection(projectRef, "approvals"), orderBy("created_at", "desc"))),
+    getDocs(query(collection(projectRef, "history"), orderBy("created_at", "desc"))),
+    getDocs(query(collection(projectRef, "analyses"), orderBy("created_at", "desc"))),
+    getDocs(query(collection(projectRef, "specifications"), orderBy("version", "desc")))
   ]);
 
-  if (projectResult.error) throw projectResult.error;
-  if (approvalsResult.error) throw approvalsResult.error;
-  if (historyResult.error) throw historyResult.error;
-  if (analysesResult.error) throw analysesResult.error;
-  if (specsResult.error) throw specsResult.error;
+  const project = normalizeProject(projectSnapshot.id, projectSnapshot.data());
+  const approvals = approvalSnapshots.docs.map((item) => normalizeChild(item.id, item.data()));
+  const history = historySnapshots.docs.map((item) => normalizeChild(item.id, item.data()));
 
-  const project = projectResult.data;
-  const approvals = approvalsResult.data ?? [];
-  const latestApproval = (type: string) => approvals.find((item) => item.approval_type === type)?.decision;
+  const latestApproval = (type: string) =>
+    approvals.find((item) => item.approval_type === type)?.decision;
 
-  const nextActions = (TRANSITIONS[project.status] ?? []).map((status) => {
+  const nextActions = (TRANSITIONS[String(project.status)] ?? []).map((status) => {
     const approvalType =
       project.status === "制作待ち" && status === "制作中" ? "production_start" :
       project.status === "最終確認" && status === "納品" ? "final_delivery" : null;
+
     return {
       status,
       approvalType,
@@ -118,22 +158,38 @@ async function cloudDetail(id: string) {
     };
   });
 
-  const analyses = (analysesResult.data ?? []).flatMap((row) => {
+  const analyses = analysisSnapshots.docs.flatMap((row) => {
+    const data = row.data();
     try {
-      const document = JSON.parse(row.raw_json ?? "{}");
+      const document = typeof data.raw_json === "string" ? JSON.parse(data.raw_json) : data.raw_json;
       return document?.schemaVersion === 1 && document?.result
-        ? [{ id: row.id, createdAt: row.created_at, stale: false, ...document }]
+        ? [{
+            id: row.id,
+            createdAt: toIso(data.created_at) ?? new Date(0).toISOString(),
+            stale: false,
+            ...document
+          }]
         : [];
     } catch {
       return [];
     }
   });
 
-  const specifications = (specsResult.data ?? []).flatMap((row) => {
+  const specifications = specSnapshots.docs.flatMap((row) => {
+    const data = row.data();
     try {
-      const content = JSON.parse(row.content_json ?? "{}");
-      return content?.schemaVersion === 1
-        ? [{ id: row.id, version: row.version, status: row.status, createdAt: row.created_at, stale: false, content }]
+      const specification = typeof data.content_json === "string"
+        ? JSON.parse(data.content_json)
+        : data.content_json;
+      return specification?.schemaVersion === 1
+        ? [{
+            id: row.id,
+            version: data.version,
+            status: data.status,
+            createdAt: toIso(data.created_at) ?? new Date(0).toISOString(),
+            stale: false,
+            content: specification
+          }]
         : [];
     } catch {
       return [];
@@ -142,10 +198,10 @@ async function cloudDetail(id: string) {
 
   return {
     project,
-    latestAnalysis: analysesResult.data?.[0] ?? null,
-    latestSpec: specsResult.data?.[0] ?? null,
+    latestAnalysis: analyses[0] ?? null,
+    latestSpec: specifications[0] ?? null,
     approvals,
-    history: historyResult.data ?? [],
+    history,
     nextActions,
     analysisWorkspace: {
       mode: "cloud-management",
@@ -175,13 +231,27 @@ export const appApi = {
 
   async listProjects() {
     if (!cloudMode) return localJson("/api/projects");
-    const client = requireSupabase();
-    const { data, error } = await client
-      .from("projects")
-      .select("id,project_code,project_name,client_name,source,status,priority,desired_deadline,created_at,updated_at")
-      .order("updated_at", { ascending: false });
-    if (error) throw error;
-    return data ?? [];
+
+    const { db } = requireFirebase();
+    const snapshots = await getDocs(
+      query(collection(db, "projects"), orderBy("updated_at", "desc"))
+    );
+
+    return snapshots.docs.map((item) => {
+      const project = normalizeProject(item.id, item.data());
+      return {
+        id: project.id,
+        project_code: project.project_code,
+        project_name: project.project_name,
+        client_name: project.client_name,
+        source: project.source,
+        status: project.status,
+        priority: project.priority,
+        desired_deadline: project.desired_deadline,
+        created_at: project.created_at,
+        updated_at: project.updated_at
+      };
+    });
   },
 
   async detail(id: string) {
@@ -198,16 +268,38 @@ export const appApi = {
       });
     }
 
-    const client = requireSupabase();
-    const id = crypto.randomUUID();
-    const { data, error } = await client.from("projects").insert({
-      id,
-      project_code: makeProjectCode(id),
-      ...projectPayload(form)
-    }).select("*").single();
-    if (error) throw error;
-    await cloudHistory(id, "project_created", "案件を登録しました。");
-    return data;
+    const { db } = requireFirebase();
+    const uid = currentUserId();
+    const projectRef = doc(collection(db, "projects"));
+    const historyRef = doc(collection(projectRef, "history"));
+    const batch = writeBatch(db);
+
+    batch.set(projectRef, {
+      id: projectRef.id,
+      owner_id: uid,
+      project_code: makeProjectCode(projectRef.id),
+      ...projectPayload(form),
+      status: "新規",
+      assignee: "",
+      preview_url: "",
+      github_repository: "",
+      final_confirmation: 0,
+      delivered_at: null,
+      workflow_approvals: {},
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp()
+    });
+
+    batch.set(historyRef, {
+      owner_id: uid,
+      event_type: "project_created",
+      description: "案件を登録しました。",
+      created_at: serverTimestamp()
+    });
+
+    await batch.commit();
+    const created = await getDoc(projectRef);
+    return normalizeProject(created.id, created.data() ?? {});
   },
 
   async updateProject(id: string, form: Record<string, string>) {
@@ -219,10 +311,25 @@ export const appApi = {
       });
     }
 
-    const client = requireSupabase();
-    const { error } = await client.from("projects").update(projectPayload(form)).eq("id", id);
-    if (error) throw error;
-    await cloudHistory(id, "project_updated", "案件情報を編集しました。");
+    const { db } = requireFirebase();
+    const uid = currentUserId();
+    const projectRef = doc(db, "projects", id);
+    const historyRef = doc(collection(projectRef, "history"));
+    const batch = writeBatch(db);
+
+    batch.update(projectRef, {
+      ...projectPayload(form),
+      updated_at: serverTimestamp()
+    });
+
+    batch.set(historyRef, {
+      owner_id: uid,
+      event_type: "project_updated",
+      description: "案件情報を編集しました。",
+      created_at: serverTimestamp()
+    });
+
+    await batch.commit();
     return cloudDetail(id);
   },
 
@@ -234,16 +341,55 @@ export const appApi = {
         body: JSON.stringify({ status })
       });
     }
-    const client = requireSupabase();
-    const { error } = await client.rpc("change_project_status", {
-      p_project_id: id,
-      p_status: status
+
+    const { db } = requireFirebase();
+    const uid = currentUserId();
+    const projectRef = doc(db, "projects", id);
+
+    await runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(projectRef);
+      if (!snapshot.exists()) throw new Error("案件が見つかりません。");
+
+      const current = snapshot.data();
+      const currentStatus = String(current.status ?? "");
+      const allowed = TRANSITIONS[currentStatus] ?? [];
+
+      if (!allowed.includes(status)) {
+        throw new Error("このステータスには直接変更できません。");
+      }
+
+      const approvals = (current.workflow_approvals ?? {}) as Record<string, string>;
+      if (currentStatus === "制作待ち" && status === "制作中" && approvals.production_start !== "approved") {
+        throw new Error("制作開始の明示承認が必要です。");
+      }
+      if (currentStatus === "最終確認" && status === "納品" && approvals.final_delivery !== "approved") {
+        throw new Error("最終納品の明示承認が必要です。");
+      }
+
+      const update: Record<string, unknown> = {
+        status,
+        updated_at: serverTimestamp()
+      };
+      if (status === "納品") update.delivered_at = serverTimestamp();
+
+      transaction.update(projectRef, update);
+      transaction.set(doc(collection(projectRef, "history")), {
+        owner_id: uid,
+        event_type: "status_changed",
+        description: `ステータスを「${currentStatus}」から「${status}」へ変更しました。`,
+        created_at: serverTimestamp()
+      });
     });
-    if (error) throw error;
+
     return cloudDetail(id);
   },
 
-  async recordApproval(id: string, approvalType: string, decision: "approved" | "rejected", note: string) {
+  async recordApproval(
+    id: string,
+    approvalType: string,
+    decision: "approved" | "rejected",
+    note: string
+  ) {
     if (!cloudMode) {
       return localJson(`/api/projects/${id}/approvals`, {
         method: "POST",
@@ -251,14 +397,60 @@ export const appApi = {
         body: JSON.stringify({ approvalType, decision, note })
       });
     }
-    const client = requireSupabase();
-    const { error } = await client.rpc("record_project_approval", {
-      p_project_id: id,
-      p_approval_type: approvalType,
-      p_decision: decision,
-      p_note: note
+
+    const { db } = requireFirebase();
+    const uid = currentUserId();
+    const projectRef = doc(db, "projects", id);
+
+    await runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(projectRef);
+      if (!snapshot.exists()) throw new Error("案件が見つかりません。");
+
+      const project = snapshot.data();
+      const status = String(project.status ?? "");
+
+      if (approvalType === "production_start" && status !== "制作待ち") {
+        throw new Error("制作開始は「制作待ち」の時だけ承認できます。");
+      }
+      if (approvalType === "final_delivery" && status !== "最終確認") {
+        throw new Error("最終納品は「最終確認」の時だけ承認できます。");
+      }
+      if (!["production_start", "final_delivery"].includes(approvalType)) {
+        throw new Error("この承認はクラウド版ではまだ利用できません。");
+      }
+
+      const approvals = {
+        ...((project.workflow_approvals ?? {}) as Record<string, string>),
+        [approvalType]: decision
+      };
+
+      const projectUpdate: Record<string, unknown> = {
+        workflow_approvals: approvals,
+        updated_at: serverTimestamp()
+      };
+
+      if (approvalType === "final_delivery") {
+        projectUpdate.final_confirmation = decision === "approved" ? 1 : 0;
+      }
+
+      transaction.update(projectRef, projectUpdate);
+
+      transaction.set(doc(collection(projectRef, "approvals")), {
+        owner_id: uid,
+        approval_type: approvalType,
+        decision,
+        note: note.trim().slice(0, 2000),
+        created_at: serverTimestamp()
+      });
+
+      transaction.set(doc(collection(projectRef, "history")), {
+        owner_id: uid,
+        event_type: "approval_recorded",
+        description: `${APPROVALS[approvalType] ?? approvalType}を${decision === "approved" ? "承認" : "差し戻し"}しました。`,
+        created_at: serverTimestamp()
+      });
     });
-    if (error) throw error;
+
     return cloudDetail(id);
   },
 
@@ -266,6 +458,7 @@ export const appApi = {
     if (cloudMode) {
       throw new Error("分析・サイト生成は現在PC版で実行してください。スマホ版は案件管理・承認に対応しています。");
     }
+
     return localJson(`/api/projects/${id}/${route}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -274,7 +467,10 @@ export const appApi = {
   },
 
   async backup() {
-    if (cloudMode) throw new Error("クラウド版ではローカルDBバックアップは使用しません。");
+    if (cloudMode) {
+      throw new Error("クラウド版ではローカルDBバックアップは使用しません。");
+    }
+
     return localJson("/api/backups", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
