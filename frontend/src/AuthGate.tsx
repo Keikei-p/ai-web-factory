@@ -1,4 +1,5 @@
-import { FormEvent, ReactNode, useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { cloudMode, requireSupabase, supabase, supabaseConfigured } from "./supabase";
 
