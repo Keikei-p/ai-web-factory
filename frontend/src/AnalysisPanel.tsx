@@ -87,6 +87,7 @@ export function AnalysisPanel({
   const [specId, setSpecId] = useState("");
   const [decisionNote, setDecisionNote] = useState("");
 
+  const cloudManagement = workspace.mode === "cloud-management";
   const latest = workspace.analyses[0];
   const analysis = workspace.analyses.find((item) => item.id === analysisId) ?? latest;
   const spec = workspace.specifications.find((item) => item.id === specId) ?? workspace.specifications[0];
@@ -101,20 +102,25 @@ export function AnalysisPanel({
         <span className="safe-badge">下書き生成</span>
       </div>
 
+      {cloudManagement && (
+        <div className="notice warning">
+          クラウド版では分析・仕様書生成はまだ実行しません。スマホでは案件管理と承認を行い、制作処理のクラウド移行は次の段階で追加します。
+        </div>
+      )}
       <p>入力欄をもとに不足情報を整理します。依頼文の意味解析は行いません。不足内容は「案件を編集」で補完して再分析してください。</p>
       <p className="muted">顧客名・担当者・連絡先は分析対象外です。入力文内の一部の連絡先・秘密情報も除外します。自動除外は完全ではありませんが、外部には送信しません。</p>
 
       <div className="analysis-actions">
         <button
           className="primary-button"
-          disabled={busy}
+          disabled={busy || cloudManagement}
           onClick={() => { setAnalysisId(""); onAnalyze(); }}
         >
           {busy ? "処理中…" : latest ? "ローカルで再分析" : "ローカル分析を実行"}
         </button>
         <button
           className="secondary-button"
-          disabled={busy || !latest || latest.stale}
+          disabled={busy || cloudManagement || !latest || latest.stale}
           onClick={() => { if (latest) { setSpecId(""); onGenerate(latest.id); } }}
         >
           最新分析から仕様書の下書きを生成
@@ -211,7 +217,7 @@ export function AnalysisPanel({
             <div className="approval-actions-inline">
               <button
                 className="secondary-button"
-                disabled={busy || spec.stale}
+                disabled={busy || cloudManagement || spec.stale}
                 onClick={() => {
                   onDecision(spec.id, "rejected", decisionNote);
                   setDecisionNote("");
@@ -221,7 +227,7 @@ export function AnalysisPanel({
               </button>
               <button
                 className="primary-button"
-                disabled={busy || spec.stale || spec.content.unresolved.length > 0}
+                disabled={busy || cloudManagement || spec.stale || spec.content.unresolved.length > 0}
                 onClick={() => {
                   onDecision(spec.id, "approved", decisionNote);
                   setDecisionNote("");
