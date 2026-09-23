@@ -1,0 +1,185 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function ownsExistingProject(projectId) {
+      return signedIn()
+        && get(/databases/$(database)/documents/projects/$(projectId)).data.owner_id == request.auth.uid;
+    }
+
+    match /projects/{projectId} {
+      function sameOwner() {
+        return request.resource.data.owner_id == resource.data.owner_id
+          && resource.data.owner_id == request.auth.uid;
+      }
+
+      function editableProjectUpdate() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "project_name",
+          "client_name",
+          "contact_name",
+          "contact",
+          "source",
+          "request_details",
+          "site_type",
+          "purpose",
+          "target",
+          "required_pages",
+          "design_preferences",
+          "reference_sites",
+          "required_features",
+          "assets",
+          "desired_deadline",
+          "budget",
+          "priority",
+          "assignee",
+          "github_repository",
+          "updated_at"
+        ])
+        && request.resource.data.updated_at == request.time;
+      }
+
+      function normalTransition() {
+        return
+          (resource.data.status == "新規" && request.resource.data.status == "AI分析中") ||
+          (resource.data.status == "AI分析中" && request.resource.data.status in ["情報不足", "確認待ち"]) ||
+          (resource.data.status == "情報不足" && request.resource.data.status in ["AI分析中", "確認待ち"]) ||
+          (resource.data.status == "確認待ち" && request.resource.data.status == "制作待ち") ||
+          (resource.data.status == "制作中" && request.resource.data.status == "AI品質チェック") ||
+          (resource.data.status == "AI品質チェック" && request.resource.data.status in ["ユーザー確認", "修正中"]) ||
+          (resource.data.status == "ユーザー確認" && request.resource.data.status in ["修正中", "最終確認"]) ||
+          (resource.data.status == "修正中" && request.resource.data.status == "再チェック") ||
+          (resource.data.status == "再チェック" && request.resource.data.status in ["ユーザー確認", "修正中", "最終確認"]) ||
+          (resource.data.status == "納品" && request.resource.data.status == "完了");
+      }
+
+      function productionStartTransition() {
+        return resource.data.status == "制作待ち"
+          && request.resource.data.status == "制作中"
+          && resource.data.workflow_approvals.production_start == "approved";
+      }
+
+      function finalDeliveryTransition() {
+        return resource.data.status == "最終確認"
+          && request.resource.data.status == "納品"
+          && resource.data.workflow_approvals.final_delivery == "approved"
+          && request.resource.data.delivered_at == request.time;
+      }
+
+      function statusTransitionUpdate() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "status",
+          "updated_at",
+          "delivered_at"
+        ])
+        && request.resource.data.updated_at == request.time
+        && (normalTransition() || productionStartTransition() || finalDeliveryTransition());
+      }
+
+      function productionApprovalUpdate() {
+        return resource.data.status == "制作待ち"
+          && request.resource.data.workflow_approvals
+              .diff(resource.data.workflow_approvals)
+              .affectedKeys()
+              .hasOnly(["production_start"])
+          && request.resource.data.workflow_approvals.production_start in ["approved", "rejected"]
+          && request.resource.data.final_confirmation == resource.data.final_confirmation;
+      }
+
+      function deliveryApprovalUpdate() {
+        return resource.data.status == "最終確認"
+          && request.resource.data.workflow_approvals
+              .diff(resource.data.workflow_approvals)
+              .affectedKeys()
+              .hasOnly(["final_delivery"])
+          && request.resource.data.workflow_approvals.final_delivery in ["approved", "rejected"]
+          && request.resource.data.final_confirmation ==
+              (request.resource.data.workflow_approvals.final_delivery == "approved" ? 1 : 0);
+      }
+
+      function criticalApprovalUpdate() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "workflow_approvals",
+          "final_confirmation",
+          "updated_at"
+        ])
+        && request.resource.data.updated_at == request.time
+        && (productionApprovalUpdate() || deliveryApprovalUpdate());
+      }
+
+      allow read: if signedIn() && resource.data.owner_id == request.auth.uid;
+
+      allow create: if signedIn()
+        && request.resource.data.owner_id == request.auth.uid
+        && request.resource.data.status == "新規"
+        && request.resource.data.final_confirmation == 0
+        && request.resource.data.workflow_approvals == {}
+        && request.resource.data.created_at == request.time
+        && request.resource.data.updated_at == request.time;
+
+      allow update: if signedIn()
+        && sameOwner()
+        && (editableProjectUpdate() || statusTransitionUpdate() || criticalApprovalUpdate());
+
+      allow delete: if false;
+
+      match /history/{historyId} {
+        allow read: if ownsExistingProject(projectId);
+        allow create: if ownsExistingProject(projectId)
+          && request.resource.data.owner_id == request.auth.uid
+          && request.resource.data.created_at == request.time
+          && request.resource.data.keys().hasOnly([
+            "owner_id", "event_type", "description", "created_at"
+          ]);
+        allow update, delete: if false;
+      }
+
+      match /approvals/{approvalId} {
+        allow read: if ownsExistingProject(projectId);
+        allow create: if ownsExistingProject(projectId)
+          && request.resource.data.owner_id == request.auth.uid
+          && request.resource.data.approval_type in ["production_start", "final_delivery"]
+          && request.resource.data.decision in ["approved", "rejected"]
+          && request.resource.data.note is string
+          && request.resource.data.note.size() <= 2000
+          && request.resource.data.created_at == request.time
+          && getAfter(/databases/$(database)/documents/projects/$(projectId))
+              .data.workflow_approvals[request.resource.data.approval_type] ==
+              request.resource.data.decision
+          && request.resource.data.keys().hasOnly([
+            "owner_id", "approval_type", "decision", "note", "created_at"
+          ]);
+        allow update, delete: if false;
+      }
+
+      match /analyses/{analysisId} {
+        allow read: if ownsExistingProject(projectId);
+        allow write: if false;
+      }
+
+      match /specifications/{specificationId} {
+        allow read: if ownsExistingProject(projectId);
+        allow write: if false;
+      }
+
+      match /site_builds/{buildId} {
+        allow read: if ownsExistingProject(projectId);
+        allow write: if false;
+      }
+
+      match /quality_checks/{checkId} {
+        allow read: if ownsExistingProject(projectId);
+        allow write: if false;
+      }
+
+      match /revision_requests/{revisionId} {
+        allow read: if ownsExistingProject(projectId);
+        allow write: if false;
+      }
+    }
+  }
+}
