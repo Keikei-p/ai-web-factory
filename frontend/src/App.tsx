@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { AnalysisPanel, type AnalysisWorkspace } from "./AnalysisPanel";
 import { ProductionPanel, type ProductionWorkspace } from "./ProductionPanel";
+import { appApi } from "./app-api";
 
 type ProjectSummary = {
   id: string;
@@ -192,15 +193,13 @@ function sourceLabel(source: string, meta: MetaResponse) {
   return meta.sources.find(([value]) => value === source)?.[1] ?? source;
 }
 
-async function readJson(response: Response) {
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data.error || "処理に失敗しました。");
-  }
-  return data;
-}
-
-function App() {
+function App({
+  cloudUserEmail = "",
+  onCloudSignOut = async () => {}
+}: {
+  cloudUserEmail?: string;
+  onCloudSignOut?: () => Promise<void>;
+}) {
   const [view, setView] = useState<View>({ screen: "dashboard" });
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [detail, setDetail] = useState<DetailResponse | null>(null);
@@ -212,8 +211,7 @@ function App() {
   const loadProjects = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/projects");
-      setProjects(await readJson(response));
+      setProjects(await appApi.listProjects() as ProjectSummary[]);
     } catch (error) {
       setNotice({
         kind: "error",
@@ -227,8 +225,7 @@ function App() {
   const loadDetail = useCallback(async (id: string) => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/projects/${id}`);
-      const data = (await readJson(response)) as DetailResponse;
+      const data = await appApi.detail(id) as DetailResponse;
       setDetail(data);
       return data;
     } catch (error) {
@@ -246,8 +243,7 @@ function App() {
     void loadProjects();
     void (async () => {
       try {
-        const response = await fetch("/api/meta");
-        setMeta(await readJson(response));
+        setMeta(await appApi.meta() as MetaResponse);
       } catch {
         // 初期値で動作可能。API起動直後などは次回表示時に再取得される。
       }
@@ -271,12 +267,7 @@ function App() {
     setBackupBusy(true);
     setNotice(null);
     try {
-      const response = await fetch("/api/backups", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "{}"
-      });
-      const data = await readJson(response);
+      const data = await appApi.backup();
       setNotice({ kind: "success", text: `バックアップを作成しました: ${data.filename}` });
     } catch (error) {
       setNotice({
@@ -295,7 +286,7 @@ function App() {
           <div className="brand-mark">AW</div>
           <div className="brand-copy">
             <strong>AI Web Factory</strong>
-            <span>Local workspace</span>
+            <span>{appApi.mode === "cloud" ? "Cloud workspace" : "Local workspace"}</span>
           </div>
         </div>
 
@@ -315,12 +306,14 @@ function App() {
         </nav>
 
         <div className="sidebar-footer">
-          <button className="backup-link" onClick={backupNow} disabled={backupBusy}>
-            {backupBusy ? "保存中..." : "DBバックアップ"}
-          </button>
+          {appApi.mode === "local" && (
+            <button className="backup-link" onClick={backupNow} disabled={backupBusy}>
+              {backupBusy ? "保存中..." : "DBバックアップ"}
+            </button>
+          )}
           <div className="local-badge">
             <span className="dot" />
-            PC内だけで稼働
+            {appApi.mode === "cloud" ? "ログイン保護" : "PC内だけで稼働"}
           </div>
         </div>
       </aside>
@@ -340,9 +333,21 @@ function App() {
             </h1>
           </div>
           <div className="topbar-actions">
-            <button className="secondary-button desktop-only" onClick={backupNow} disabled={backupBusy}>
-              {backupBusy ? "保存中..." : "バックアップ"}
-            </button>
+            {appApi.mode === "local" ? (
+              <button className="secondary-button desktop-only" onClick={backupNow} disabled={backupBusy}>
+                {backupBusy ? "保存中..." : "バックアップ"}
+              </button>
+            ) : (
+              <>
+                <span className="cloud-account">{cloudUserEmail}</span>
+                <button
+                  className="secondary-button"
+                  onClick={() => void onCloudSignOut()}
+                >
+                  ログアウト
+                </button>
+              </>
+            )}
             {view.screen !== "new" && (
               <button className="primary-button" onClick={() => setView({ screen: "new" })}>
                 ＋ 案件を登録
@@ -563,13 +568,9 @@ function ProjectEditor({
     setSaving(true);
 
     try {
-      const url = mode === "create" ? "/api/projects" : `/api/projects/${projectId}`;
-      const response = await fetch(url, {
-        method: mode === "create" ? "POST" : "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form)
-      });
-      const data = await readJson(response);
+      const data = mode === "create"
+        ? await appApi.createProject(form)
+        : await appApi.updateProject(projectId!, form);
       const id = mode === "create" ? data.id : data.project.id;
       onSaved(id);
     } catch (submitError) {
@@ -748,17 +749,11 @@ function ProjectDetail({
     setActionBusy(true);
     setActionError("");
     try {
-      const response = await fetch(`/api/projects/${project.id}/${route}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
-      });
-      const data = await readJson(response);
+      const data = await appApi.projectAction(project.id, route, body);
       if (data?.project && data?.analysisWorkspace) {
         onChanged(data as DetailResponse, message);
       } else {
-        const refreshed = await fetch(`/api/projects/${project.id}`);
-        onChanged(await readJson(refreshed) as DetailResponse, message);
+        onChanged(await appApi.detail(project.id) as DetailResponse, message);
       }
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "処理に失敗しました。再実行してください。");
@@ -771,12 +766,7 @@ function ProjectDetail({
     setActionBusy(true);
     setActionError("");
     try {
-      const response = await fetch(`/api/projects/${project.id}/status`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status })
-      });
-      const next = (await readJson(response)) as DetailResponse;
+      const next = await appApi.changeStatus(project.id, status) as DetailResponse;
       onChanged(next, `ステータスを「${status}」に変更しました。`);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "ステータス変更に失敗しました。");
@@ -789,12 +779,12 @@ function ProjectDetail({
     setActionBusy(true);
     setActionError("");
     try {
-      const response = await fetch(`/api/projects/${project.id}/approvals`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ approvalType, decision, note: approvalNote })
-      });
-      const next = (await readJson(response)) as DetailResponse;
+      const next = await appApi.recordApproval(
+        project.id,
+        approvalType,
+        decision,
+        approvalNote
+      ) as DetailResponse;
       setApprovalNote("");
       onChanged(
         next,
