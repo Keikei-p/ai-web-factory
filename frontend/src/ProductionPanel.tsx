@@ -58,7 +58,22 @@ export function ProductionPanel({
   busy: boolean;
   onAction: (args: ActionArgs) => void;
 }) {
-  if (workspace.mode === "cloud-management") {
+  const cloudManagement = workspace.mode === "cloud-management";
+  const latestSpec = analysisWorkspace.specifications[0];
+  const approvedLatestSpec =
+    latestSpec && latestSpec.status === "approved" && !latestSpec.stale ? latestSpec : null;
+  const latestBuild = workspace.builds[0];
+
+  const [revisionType, setRevisionType] = useState("heroTitle");
+  const [revisionValue, setRevisionValue] = useState("");
+  const [compactHero, setCompactHero] = useState(true);
+
+  const revisionOptions = useMemo(
+    () => Object.entries(workspace.revisionTypes),
+    [workspace.revisionTypes]
+  );
+
+  if (cloudManagement) {
     return (
       <section className="panel production-panel">
         <div className="panel-header">
@@ -75,20 +90,6 @@ export function ProductionPanel({
       </section>
     );
   }
-
-  const latestSpec = analysisWorkspace.specifications[0];
-  const approvedLatestSpec =
-    latestSpec && latestSpec.status === "approved" && !latestSpec.stale ? latestSpec : null;
-  const latestBuild = workspace.builds[0];
-
-  const [revisionType, setRevisionType] = useState("heroTitle");
-  const [revisionValue, setRevisionValue] = useState("");
-  const [compactHero, setCompactHero] = useState(true);
-
-  const revisionOptions = useMemo(
-    () => Object.entries(workspace.revisionTypes),
-    [workspace.revisionTypes]
-  );
 
   const runRevision = () => {
     if (!latestBuild) return;
