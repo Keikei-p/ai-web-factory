@@ -58,6 +58,24 @@ export function ProductionPanel({
   busy: boolean;
   onAction: (args: ActionArgs) => void;
 }) {
+  if (workspace.mode === "cloud-management") {
+    return (
+      <section className="panel production-panel">
+        <div className="panel-header">
+          <div>
+            <h3>Web制作</h3>
+            <p>スマホ対応のクラウド版では、現在は案件管理と承認まで利用できます。</p>
+          </div>
+          <span className="approval-wait">次段階</span>
+        </div>
+        <div className="notice warning">
+          サイト生成・プレビュー・品質チェック・納品ファイル生成は、まだクラウドへ移行していません。
+          現在のローカル制作機能は保持されています。
+        </div>
+      </section>
+    );
+  }
+
   const latestSpec = analysisWorkspace.specifications[0];
   const approvedLatestSpec =
     latestSpec && latestSpec.status === "approved" && !latestSpec.stale ? latestSpec : null;
