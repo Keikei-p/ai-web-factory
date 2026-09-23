@@ -66,19 +66,22 @@
 
 ## Cloud / smartphone migration
 
-- [x] Supabase Authログイン画面
+- [x] Firebase Authenticationログイン画面
 - [x] ローカル版を残したデュアルモード構成
-- [x] Supabase Postgresスキーマ
+- [x] Cloud Firestoreデータ構造
 - [x] owner_idによるデータ所有者分離
-- [x] RLSポリシー
-- [x] ステータス変更のDB側検証
-- [x] 制作開始・最終納品承認のDB側検証
+- [x] Firestore Security Rules
+- [x] ステータス変更のRules側検証
+- [x] 制作開始・最終納品承認のRules側検証
 - [x] クラウド案件登録・編集・一覧・詳細
 - [x] クラウド工程管理・承認
+- [x] Firebase Hosting設定
 - [x] スマホ向けWeb App manifest
-- [ ] 実SupabaseプロジェクトへSQL適用
+- [ ] 実Firebaseプロジェクト作成
+- [ ] Email/Password Authentication有効化
 - [ ] 最初のログインユーザー作成
-- [ ] HTTPSホスティングへCloud版をデプロイ
-- [ ] ローカル既存案件のクラウド移行
+- [ ] Firestore Rules / indexesデプロイ
+- [ ] Firebase Hostingへデプロイ
+- [ ] ローカル既存案件のFirestore移行
 - [ ] 分析・仕様書生成のクラウド化
 - [ ] サイト生成・プレビュー・品質チェックのクラウド化
