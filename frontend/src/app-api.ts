@@ -9,6 +9,7 @@ import {
   serverTimestamp,
   Timestamp,
   updateDoc,
+  where,
   writeBatch
 } from "firebase/firestore";
 import { cloudMode, requireFirebase } from "./firebase";
@@ -233,8 +234,13 @@ export const appApi = {
     if (!cloudMode) return localJson("/api/projects");
 
     const { db } = requireFirebase();
+    const uid = currentUserId();
     const snapshots = await getDocs(
-      query(collection(db, "projects"), orderBy("updated_at", "desc"))
+      query(
+        collection(db, "projects"),
+        where("owner_id", "==", uid),
+        orderBy("updated_at", "desc")
+      )
     );
 
     return snapshots.docs.map((item) => {
