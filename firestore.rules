@@ -11,6 +11,11 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/projects/$(projectId)).data.owner_id == request.auth.uid;
     }
 
+    function ownsProjectAfter(projectId) {
+      return signedIn()
+        && getAfter(/databases/$(database)/documents/projects/$(projectId)).data.owner_id == request.auth.uid;
+    }
+
     match /projects/{projectId} {
       function sameOwner() {
         return request.resource.data.owner_id == resource.data.owner_id
@@ -129,7 +134,7 @@ service cloud.firestore {
 
       match /history/{historyId} {
         allow read: if ownsExistingProject(projectId);
-        allow create: if ownsExistingProject(projectId)
+        allow create: if ownsProjectAfter(projectId)
           && request.resource.data.owner_id == request.auth.uid
           && request.resource.data.created_at == request.time
           && request.resource.data.keys().hasOnly([
