@@ -13,12 +13,11 @@
     "test": "npm run test:backend && npm run test:firestore",
     "verify": "npm run typecheck && npm test && npm run build",
     "test:backend": "npm run test -w backend",
-    "test:firestore": "firebase emulators:exec --only firestore --project demo-ai-web-factory \"node --test tests/firestore.rules.test.mjs\""
+    "test:firestore": "npx --yes firebase-tools@latest emulators:exec --only firestore --project demo-ai-web-factory \"node --test tests/firestore.rules.test.mjs\""
   },
   "devDependencies": {
     "concurrently": "latest",
-    "@firebase/rules-unit-testing": "latest",
-    "firebase-tools": "latest"
+    "@firebase/rules-unit-testing": "latest"
   },
   "allowScripts": {
     "esbuild@0.28.2": true
