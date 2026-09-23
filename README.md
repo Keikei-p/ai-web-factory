@@ -5,7 +5,7 @@ Web制作案件を 受付 → 整理 → 仕様書 → 承認 → 制作 → 品
 現在は2つの動作モードを持っています。
 
 - local: Windows PC + SQLite。従来のローカル制作機能をすべて利用
-- cloud: Supabase Auth + Postgres。PC/スマホ共通ログインで案件管理と承認
+- cloud: Firebase Authentication + Cloud Firestore + Firebase Hosting。PC/スマホ共通ログインで案件管理と承認
 
 外部AI APIはまだ接続していません。
 
@@ -35,7 +35,7 @@ Web制作案件を 受付 → 整理 → 仕様書 → 承認 → 制作 → 品
 
 ## Cloud mode
 
-Supabaseを設定するとログイン式に切り替えられます。
+Firebaseを設定するとログイン式に切り替えられます。
 
 現在のクラウド対応範囲:
 
@@ -50,9 +50,9 @@ Supabaseを設定するとログイン式に切り替えられます。
 - ユーザーごとのデータ分離
 - スマホのホーム画面から開きやすいWebアプリ設定
 
-SupabaseのRow Level Securityで owner_id と auth.uid() を照合し、他ユーザーの案件を読めない構成にしています。
+Firestore Security Rulesで owner_id とログイン中のUIDを照合し、他ユーザーの案件を読めない構成にしています。
 
-工程変更と重要承認はPostgres関数側でも検証します。ブラウザからstatus列を直接更新する権限は与えません。
+工程変更と重要承認はFirestore Security Rulesでも検証します。
 
 ### Cloud modeでまだPC側に残しているもの
 
@@ -73,10 +73,14 @@ SupabaseのRow Level Securityで owner_id と auth.uid() を照合し、他ユ�
 必要な環境変数:
 
 - VITE_APP_MODE=cloud
-- VITE_SUPABASE_URL
-- VITE_SUPABASE_PUBLISHABLE_KEY
+- VITE_FIREBASE_API_KEY
+- VITE_FIREBASE_AUTH_DOMAIN
+- VITE_FIREBASE_PROJECT_ID
+- VITE_FIREBASE_STORAGE_BUCKET
+- VITE_FIREBASE_MESSAGING_SENDER_ID
+- VITE_FIREBASE_APP_ID
 
-service_role key はフロントエンドへ絶対に設定しません。
+Firebaseのサービスアカウント秘密鍵はフロントエンドへ絶対に設定しません。
 
 ## ローカルURL
 
@@ -104,4 +108,4 @@ GitHub Actionsでは以下を確認します。
 - 顧客連絡・課金・契約・ドメイン・DNS・本番公開を自動実行しない
 - ステータスを飛ばさない
 - 重要操作を履歴に残す
-- service_roleなどの秘密鍵をブラウザへ置かない
+- サービスアカウント秘密鍵などのサーバー用秘密情報をブラウザへ置かない
