@@ -1121,3 +1121,75 @@ h3 {
     width: 100%;
   }
 }
+
+
+/* Cloud login / account */
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at top left, rgba(49, 78, 234, 0.12), transparent 34%),
+    #f3f5f9;
+}
+
+.auth-card {
+  width: min(440px, 100%);
+  display: grid;
+  gap: 16px;
+  padding: 30px;
+  border: 1px solid #e1e6ef;
+  border-radius: 20px;
+  background: white;
+  box-shadow: 0 24px 70px rgba(31, 45, 75, 0.12);
+}
+
+.auth-card .brand-mark {
+  margin-bottom: 4px;
+  background: #101725;
+  color: white;
+}
+
+.auth-card h1 {
+  margin-bottom: 0;
+}
+
+.auth-card > p {
+  margin-bottom: 0;
+  line-height: 1.7;
+}
+
+.auth-submit {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.auth-note {
+  font-size: 12px;
+}
+
+.cloud-account {
+  max-width: 230px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #69758d;
+  font-size: 12px;
+}
+
+@media (max-width: 680px) {
+  .auth-shell {
+    align-items: start;
+    padding: 20px 14px;
+  }
+
+  .auth-card {
+    margin-top: 8vh;
+    padding: 22px;
+  }
+
+  .cloud-account {
+    display: none;
+  }
+}
