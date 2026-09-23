@@ -12,7 +12,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
 
     steps:
       - name: Checkout
@@ -23,6 +23,12 @@ jobs:
         with:
           node-version: 24
 
+      - name: Setup Java for Firebase Emulator
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
       - name: Install dependencies
         run: npm install
 
@@ -32,7 +38,7 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: API tests
+      - name: API and Firestore rules tests
         run: npm test
 
       - name: Build
