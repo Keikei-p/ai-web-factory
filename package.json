@@ -10,11 +10,15 @@
     "dev": "concurrently -k -n API,WEB \"npm run dev -w backend\" \"npm run dev -w frontend\"",
     "build": "npm run build -w backend && npm run build -w frontend",
     "typecheck": "npm run typecheck -w backend && npm run typecheck -w frontend",
-    "test": "npm run test -w backend",
-    "verify": "npm run typecheck && npm test && npm run build"
+    "test": "npm run test:backend && npm run test:firestore",
+    "verify": "npm run typecheck && npm test && npm run build",
+    "test:backend": "npm run test -w backend",
+    "test:firestore": "firebase emulators:exec --only firestore --project demo-ai-web-factory \"node --test tests/firestore.rules.test.mjs\""
   },
   "devDependencies": {
-    "concurrently": "latest"
+    "concurrently": "latest",
+    "@firebase/rules-unit-testing": "latest",
+    "firebase-tools": "latest"
   },
   "allowScripts": {
     "esbuild@0.28.2": true
